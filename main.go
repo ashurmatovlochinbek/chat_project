@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"sync"
@@ -11,7 +12,11 @@ import (
 type Message struct {
 	RoomID   string `json:"room_id"`
 	Username string `json:"username"`
-	Content  string `json:"content"`
+	Content  string `json:"content"`   // for text messages
+	FileData []byte `json:"file_data"` // for file data
+	FileName string `json:"file_name"` // for file name
+	FileType string `json:"file_type"` // for file type (MIME type)
+	IsFile   bool   `json:"is_file"`   // flag to distinguish file from text message
 }
 
 type Client struct {
@@ -126,13 +131,24 @@ func (c *Client) WritePump() {
 			return
 		}
 
-		log.Printf("Attempting to send message to client in room %s", c.roomID)
-		err := c.socket.WriteJSON(message)
-		if err != nil {
-			log.Printf("Write error: %v", err)
-			return
+		// If message contains file data, send it as binary
+		if message.IsFile {
+			// Sending file as binary data
+			err := c.socket.WriteMessage(websocket.BinaryMessage, append([]byte{1}, message.FileData...)) // Assuming 1 denotes binary message
+			if err != nil {
+				log.Printf("Write error (binary): %v", err)
+				return
+			}
+			log.Printf("File sent successfully to client in room %s", c.roomID)
+		} else {
+			// Send regular message (text)
+			err := c.socket.WriteJSON(message)
+			if err != nil {
+				log.Printf("Write error (text): %v", err)
+				return
+			}
+			log.Printf("Message sent successfully to client in room %s", c.roomID)
 		}
-		log.Printf("Message sent successfully to client in room %s", c.roomID)
 	}
 }
 
@@ -146,20 +162,44 @@ func (c *Client) ReadPump() {
 	}()
 
 	for {
-		var message Message
-		err := c.socket.ReadJSON(&message)
+		// Check if the message is binary or JSON text
+		_, msgData, err := c.socket.ReadMessage()
 		if err != nil {
 			log.Printf("Read error: %v", err)
 			break
 		}
 
-		message.Username = c.username
-		message.RoomID = c.roomID
+		// Handle binary (file) message
+		if len(msgData) > 0 && msgData[0] == 1 { // Assuming 1 denotes binary
+			// Extract file data
+			fileMessage := Message{
+				RoomID:   c.roomID,
+				Username: c.username,
+				IsFile:   true,
+				FileData: msgData[1:],                // file content after the identifier byte
+				FileName: "filename",                 // This can be modified to extract from metadata
+				FileType: "application/octet-stream", // You can extract file type here
+			}
 
-		log.Printf("Received message in room %s: %+v", c.roomID, message)
+			// Broadcast file to clients in room
+			room := roomManager.GetOrCreateRoom(c.roomID)
+			room.BroadcastMessage(fileMessage)
 
-		room := roomManager.GetOrCreateRoom(c.roomID)
-		room.BroadcastMessage(message)
+		} else {
+			// Handle text message (JSON)
+			var message Message
+			err := json.Unmarshal(msgData, &message)
+			if err != nil {
+				log.Printf("Error unmarshaling message: %v", err)
+				continue
+			}
+			message.Username = c.username
+			message.RoomID = c.roomID
+			log.Printf("Received message in room %s: %+v", c.roomID, message)
+
+			room := roomManager.GetOrCreateRoom(c.roomID)
+			room.BroadcastMessage(message)
+		}
 	}
 }
 

@@ -131,17 +131,14 @@ func (c *Client) WritePump() {
 			return
 		}
 
-		// If message contains file data, send it as binary
 		if message.IsFile {
-			// Sending file as binary data
-			err := c.socket.WriteMessage(websocket.BinaryMessage, append([]byte{1}, message.FileData...)) // Assuming 1 denotes binary message
+			err := c.socket.WriteMessage(websocket.BinaryMessage, append([]byte{1}, message.FileData...))
 			if err != nil {
 				log.Printf("Write error (binary): %v", err)
 				return
 			}
 			log.Printf("File sent successfully to client in room %s", c.roomID)
 		} else {
-			// Send regular message (text)
 			err := c.socket.WriteJSON(message)
 			if err != nil {
 				log.Printf("Write error (text): %v", err)
@@ -162,31 +159,26 @@ func (c *Client) ReadPump() {
 	}()
 
 	for {
-		// Check if the message is binary or JSON text
 		_, msgData, err := c.socket.ReadMessage()
 		if err != nil {
 			log.Printf("Read error: %v", err)
 			break
 		}
 
-		// Handle binary (file) message
-		if len(msgData) > 0 && msgData[0] == 1 { // Assuming 1 denotes binary
-			// Extract file data
+		if len(msgData) > 0 && msgData[0] == 1 {
 			fileMessage := Message{
 				RoomID:   c.roomID,
 				Username: c.username,
 				IsFile:   true,
-				FileData: msgData[1:],                // file content after the identifier byte
-				FileName: "filename",                 // This can be modified to extract from metadata
-				FileType: "application/octet-stream", // You can extract file type here
+				FileData: msgData[1:],
+				FileName: "filename",
+				FileType: "application/octet-stream",
 			}
 
-			// Broadcast file to clients in room
 			room := roomManager.GetOrCreateRoom(c.roomID)
 			room.BroadcastMessage(fileMessage)
 
 		} else {
-			// Handle text message (JSON)
 			var message Message
 			err := json.Unmarshal(msgData, &message)
 			if err != nil {

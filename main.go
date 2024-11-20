@@ -12,11 +12,11 @@ import (
 type Message struct {
 	RoomID   string `json:"room_id"`
 	Username string `json:"username"`
-	Content  string `json:"content"`   // for text messages
-	FileData []byte `json:"file_data"` // for file data
-	FileName string `json:"file_name"` // for file name
-	FileType string `json:"file_type"` // for file type (MIME type)
-	IsFile   bool   `json:"is_file"`   // flag to distinguish file from text message
+	Content  string `json:"content"`
+	FileData []byte `json:"file_data"`
+	FileName string `json:"file_name"`
+	FileType string `json:"file_type"`
+	IsFile   bool   `json:"is_file"`
 }
 
 type Client struct {
